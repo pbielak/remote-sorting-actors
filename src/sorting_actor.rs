@@ -12,8 +12,7 @@ extern crate tokio_tcp;
 #[macro_use] extern crate structopt;
 
 use std::str::FromStr;
-use std::time::Duration;
-use std::{io, net, process, thread};
+use std::{io, net, process};
 
 use actix::prelude::*;
 use futures::Future;
@@ -22,7 +21,6 @@ use tokio_codec::FramedRead;
 use tokio_io::io::WriteHalf;
 use tokio_io::AsyncRead;
 use tokio_tcp::TcpStream;
-use tokio_tcp::TcpListener;
 
 mod codec;
 mod util;
@@ -50,7 +48,7 @@ fn main() {
         Arbiter::spawn(
             TcpStream::connect(&supervisor_addr)
                 .and_then(|stream| {
-                    let addr = SortingActor::create(|ctx| {
+                    let _ = SortingActor::create(|ctx| {
                         let my_addr = stream.local_addr().unwrap().to_string();
                         let (r, w) = stream.split();
 
@@ -67,7 +65,7 @@ fn main() {
                 .map_err(|e| {
                     println!("Can not connect to server: {}", e);
                     process::exit(1)
-                }),
+                })
         );
     });
 }

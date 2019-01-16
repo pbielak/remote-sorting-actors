@@ -24,7 +24,8 @@ use std::io;
 use actix::prelude::*;
 use futures::Stream;
 use structopt::StructOpt;
-use tokio_io::codec::FramedRead;
+use time::PreciseTime;
+use tokio_codec::FramedRead;
 use tokio_io::io::WriteHalf;
 use tokio_io::AsyncRead;
 use tokio_tcp::{TcpListener, TcpStream};
@@ -65,6 +66,7 @@ pub struct SupervisorActor {
 
     sorting_actors: Vec<WriteStream>,
 
+    start_time: PreciseTime,
     processed_chunks: usize,
     sorted_values: Vec<i64>,
 }
@@ -74,12 +76,14 @@ impl SupervisorActor {
         let sorting_actors = vec![];
         let sorted_values = vec![];
         let processed_chunks = 0;
+        let start_time = PreciseTime::now();
 
         SupervisorActor {
             addr,
             num_actors,
             num_chunks,
             sorting_actors,
+            start_time,
             processed_chunks,
             sorted_values,
         }
@@ -95,6 +99,8 @@ impl SupervisorActor {
 
             return
         }
+
+        self.start_time = PreciseTime::now();
 
         let chunks = split_vec(&values, self.num_chunks);
         let assignments = round_robin_assign((0..self.sorting_actors.len()).collect(), chunks);
@@ -161,7 +167,7 @@ impl Handler<TcpConnect> for SupervisorActor {
 
 impl StreamHandler<codec::SortingResponse, io::Error> for SupervisorActor {
     fn handle(&mut self, msg: codec::SortingResponse, _: &mut Context<Self>) {
-        println!("Supervisor got: {:?} took {}", msg.values, msg.duration);
+        println!("Supervisor got: Vec[{:?}]", msg.values.len());
 
         if self.sorted_values.is_empty() {
             self.sorted_values = msg.values;
@@ -172,8 +178,11 @@ impl StreamHandler<codec::SortingResponse, io::Error> for SupervisorActor {
 
         self.processed_chunks += 1;
 
+        // Finished
         if self.processed_chunks == self.num_chunks {
-            println!("Done with sorting: {:?}", self.sorted_values);
+            let duration = self.start_time.to(PreciseTime::now()).num_milliseconds();
+            println!("Done with sorting: Vec[{}] Time: {} (ms)", self.sorted_values.len(), duration);
+            System::current().stop();
         }
     }
 }
@@ -242,9 +251,11 @@ fn main() {
     actix::System::run(|| {
         let args = CliArgs::from_args();
 
+        let input_path: PathBuf = args.input;
         let myaddr = args.addr;
         let n = args.n;
         let k = args.k;
+        let output_path: PathBuf = args.output;
 
         let addr = net::SocketAddr::from_str(&myaddr).unwrap();
         let listener = TcpListener::bind(&addr).unwrap();
@@ -262,7 +273,9 @@ fn main() {
             SupervisorActor::new(myaddr, n, k)
         });
 
-        let sort_req = codec::SortingRequest::new(vec![6, 5, 4, 3, 2, 1]);
+        let numbers: Vec<i64> = util::read_numbers(input_path).unwrap();
+        println!("Done reading numbers: Vec[{}]", numbers.len());
+        let sort_req = codec::SortingRequest::new(numbers);
         supervisor.do_send(sort_req);
     });
 }
