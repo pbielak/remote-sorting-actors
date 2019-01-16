@@ -35,3 +35,14 @@ pub fn write_numbers(path: &PathBuf, numbers: &Vec<i64>) -> Result<bool, Error> 
 
     Ok(true)
 }
+
+
+pub fn setup_logger(debug: bool) {
+    let log_level = match debug {
+        true => "debug",
+        false => "info"
+    };
+
+    std::env::set_var("RUST_LOG", log_level);
+    env_logger::init();
+}

@@ -4,7 +4,9 @@ Define the supervisor actor
 #[macro_use] extern crate actix;
 extern crate byteorder;
 extern crate bytes;
+extern crate env_logger;
 extern crate futures;
+#[macro_use] extern crate log;
 extern crate rand;
 extern crate serde;
 extern crate serde_json;
@@ -73,7 +75,7 @@ impl SupervisorActor {
 
     pub fn sort_values(&mut self, values: Vec<i64>, ctx: &mut Context<Self>) {
         if self.sorting_actors.len() < self.num_actors {
-            println!("Not enough sorting actors");
+            debug!("Not enough sorting actors");
 
             ctx.run_later(Duration::new(1, 0), |act, ctx| {
                 act.sort_values(values, ctx);
@@ -92,7 +94,7 @@ impl SupervisorActor {
             self.sorting_actors[actor_idx].write(messages::SortingRequest::new(chunk.to_vec()))
         }
 
-        println!("Sent to workers");
+        debug!("Sent to workers");
     }
 }
 
@@ -100,11 +102,11 @@ impl Actor for SupervisorActor {
     type Context = Context<Self>;
 
     fn started(&mut self, _: &mut Self::Context) {
-        println!("[{}] SupervisorActor ~ START", self.addr);
+        debug!("[{}] SupervisorActor ~ START", self.addr);
     }
 
     fn stopping(&mut self, _: &mut Context<Self>) -> Running {
-        println!("[{}] SupervisorActor ~ STOPPING", self.addr);
+        debug!("[{}] SupervisorActor ~ STOPPING", self.addr);
 
         System::current().stop();
 
@@ -113,7 +115,7 @@ impl Actor for SupervisorActor {
 
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        println!("[{}] SupervisorActor ~ STOP", self.addr);
+        debug!("[{}] SupervisorActor ~ STOP", self.addr);
     }
 }
 
@@ -124,7 +126,7 @@ impl Handler<messages::SortingRequest> for SupervisorActor {
     fn handle(&mut self, msg: messages::SortingRequest, ctx: &mut Context<Self>) {
         let in_vec = msg.values;
 
-        println!("[SupervisorActor] Got sorting request: Vec[{}]", in_vec.len());
+        debug!("[SupervisorActor] Got sorting request: Vec[{}]", in_vec.len());
 
         self.sort_values(in_vec, ctx);
     }
@@ -140,7 +142,7 @@ impl Handler<TcpConnect> for SupervisorActor {
     type Result = ();
 
     fn handle(&mut self, msg: TcpConnect, ctx: &mut Context<Self>) {
-        println!("TCPConnect from: {:?}", msg.1);
+        debug!("TCPConnect from: {:?}", msg.1);
         let (r, w) = msg.0.split();
         SupervisorActor::add_stream(FramedRead::new(r, codec::SupervisorToSortingActorCodec), ctx);
 
@@ -150,7 +152,7 @@ impl Handler<TcpConnect> for SupervisorActor {
 
 impl StreamHandler<messages::SortingResponse, io::Error> for SupervisorActor {
     fn handle(&mut self, msg: messages::SortingResponse, _: &mut Context<Self>) {
-        println!("Supervisor got: Vec[{:?}]", msg.values.len());
+        debug!("Supervisor got: Vec[{:?}]", msg.values.len());
 
         if self.sorted_values.is_empty() {
             self.sorted_values = msg.values;
@@ -164,12 +166,13 @@ impl StreamHandler<messages::SortingResponse, io::Error> for SupervisorActor {
         // Finished
         if self.processed_chunks == self.num_chunks {
             let duration = self.start_time.to(PreciseTime::now()).num_milliseconds();
-            println!("Done with sorting: Vec[{}] Time: {} (ms)", self.sorted_values.len(), duration);
+            debug!("Done with sorting: Vec[{}] Time: {} (ms)", self.sorted_values.len(), duration);
+            println!("{}", duration);
 
             let out_path: &PathBuf = &self.output_path;
             if out_path.to_str().unwrap() != "-" {
                 let write_ok = util::write_numbers(out_path, &self.sorted_values).unwrap();
-                println!("Write ok: {:?}", write_ok);
+                debug!("Write ok: {:?}", write_ok);
             }
 
             System::current().stop();
@@ -240,6 +243,7 @@ fn merge(v1: &Vec<i64>, v2: &Vec<i64>) -> Vec<i64> {
 fn main() {
     actix::System::run(|| {
         let args = args::SupervisorCliArgs::from_args();
+        util::setup_logger(args.debug);
 
         let input_path: PathBuf = args.input;
         let myaddr = args.addr;
@@ -264,7 +268,7 @@ fn main() {
         });
 
         let numbers: Vec<i64> = util::read_numbers(input_path).unwrap();
-        println!("Done reading numbers: Vec[{}]", numbers.len());
+        debug!("Done reading numbers: Vec[{}]", numbers.len());
         let sort_req = messages::SortingRequest::new(numbers);
         supervisor.do_send(sort_req);
     });

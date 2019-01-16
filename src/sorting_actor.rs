@@ -1,7 +1,9 @@
 #[macro_use] extern crate actix;
 extern crate byteorder;
 extern crate bytes;
+extern crate env_logger;
 extern crate futures;
+#[macro_use] extern crate log;
 extern crate serde;
 extern crate serde_json;
 extern crate tokio;
@@ -29,11 +31,12 @@ mod util;
 
 
 fn main() {
-    println!("Starting SortingActor");
+    info!("Starting SortingActor");
 
     actix::System::run(|| {
         let args = args::SortingActorCliArgs::from_args();
-        // Connect to server
+        util::setup_logger(args.debug);
+
         let supervisor_addr = net::SocketAddr::from_str(&args.supervisor_addr).unwrap();
 
         Arbiter::spawn(
@@ -54,7 +57,7 @@ fn main() {
                     futures::future::ok(())
                 })
                 .map_err(|e| {
-                    println!("Can not connect to server: {}", e);
+                    error!("Can not connect to server: {}", e);
                     process::exit(1)
                 })
         );
@@ -88,11 +91,11 @@ impl Actor for SortingActor {
     type Context = Context<Self>;
 
     fn started(&mut self, _: &mut Self::Context) {
-        println!("[{}] SortingActor ~ START", self.addr)
+        debug!("[{}] SortingActor ~ START", self.addr)
     }
 
     fn stopping(&mut self, _: &mut Context<Self>) -> Running {
-        println!("[{}] SortingActor ~ STOPPING", self.addr);
+        debug!("[{}] SortingActor ~ STOPPING", self.addr);
 
         System::current().stop();
 
@@ -100,7 +103,7 @@ impl Actor for SortingActor {
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        println!("[{}] SortingActor ~ STOP", self.addr)
+        debug!("[{}] SortingActor ~ STOP", self.addr)
     }
 
 }
@@ -109,11 +112,11 @@ impl actix::io::WriteHandler<io::Error> for SortingActor {}
 
 impl StreamHandler<messages::SortingRequest, io::Error> for SortingActor {
     fn handle(&mut self, msg: messages::SortingRequest, _: &mut Context<Self>) {
-        println!("[SortingActor][{}] Got sorting request: Vec[{}]", self.addr, msg.values.len());
+        info!("[SortingActor][{}] Got sorting request: Vec[{}]", self.addr, msg.values.len());
 
         let sorted_values = self.sort_vec(msg.values);
 
-        println!("[SortingActor][{}] Done sorting", self.addr);
+        info!("[SortingActor][{}] Done sorting", self.addr);
 
         self.framed.write(messages::SortingResponse::new(sorted_values, -1))
     }
