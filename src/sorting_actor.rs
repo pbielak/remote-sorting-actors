@@ -36,32 +36,35 @@ fn main() {
     actix::System::run(|| {
         let args = args::SortingActorCliArgs::from_args();
         util::setup_logger(args.debug);
-
-        let supervisor_addr = net::SocketAddr::from_str(&args.supervisor_addr).unwrap();
-
-        Arbiter::spawn(
-            TcpStream::connect(&supervisor_addr)
-                .and_then(|stream| {
-                    SortingActor::create(|ctx| {
-                        let my_addr = stream.local_addr().unwrap().to_string();
-                        let (r, w) = stream.split();
-
-                        ctx.add_stream(FramedRead::new(r, codec::SortingActorToSupervisorCodec));
-
-                        SortingActor::new(
-                            actix::io::FramedWrite::new(w, codec::SortingActorToSupervisorCodec, ctx),
-                            my_addr,
-                        )
-                    });
-
-                    futures::future::ok(())
-                })
-                .map_err(|e| {
-                    error!("Can not connect to server: {}", e);
-                    process::exit(1)
-                })
-        );
+        create_sorting_actor(args.supervisor_addr);
     });
+}
+
+fn create_sorting_actor(addr: String) {
+    let supervisor_addr = net::SocketAddr::from_str(&addr).unwrap();
+    Arbiter::spawn(
+        TcpStream::connect(&supervisor_addr)
+            .and_then(|stream| {
+                SortingActor::create(|ctx| {
+                    let my_addr = stream.local_addr().unwrap().to_string();
+                    let (r, w) = stream.split();
+
+                    ctx.add_stream(FramedRead::new(r, codec::SortingActorToSupervisorCodec));
+
+                    SortingActor::new(
+                        actix::io::FramedWrite::new(w, codec::SortingActorToSupervisorCodec, ctx),
+                        my_addr,
+                    )
+                });
+
+                futures::future::ok(())
+            })
+            .map_err(move |e| {
+                error!("Can not connect to server: {}", e);
+                std::thread::sleep_ms(1000);
+                create_sorting_actor(addr.clone());
+            })
+    );
 }
 
 
