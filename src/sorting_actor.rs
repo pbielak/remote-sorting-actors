@@ -22,33 +22,24 @@ use tokio_io::io::WriteHalf;
 use tokio_io::AsyncRead;
 use tokio_tcp::TcpStream;
 
+mod args;
 mod codec;
+mod messages;
 mod util;
-
-
-#[derive(StructOpt, Debug)]
-#[structopt(name = "basic")]
-pub struct CliArgs {
-    #[structopt(long = "supervisor-addr")]
-    pub supervisor_addr: String,
-
-    #[structopt(short = "d", long = "debug")]
-    pub debug: bool,
-}
 
 
 fn main() {
     println!("Starting SortingActor");
 
     actix::System::run(|| {
-        let args = CliArgs::from_args();
+        let args = args::SortingActorCliArgs::from_args();
         // Connect to server
         let supervisor_addr = net::SocketAddr::from_str(&args.supervisor_addr).unwrap();
 
         Arbiter::spawn(
             TcpStream::connect(&supervisor_addr)
                 .and_then(|stream| {
-                    let _ = SortingActor::create(|ctx| {
+                    SortingActor::create(|ctx| {
                         let my_addr = stream.local_addr().unwrap().to_string();
                         let (r, w) = stream.split();
 
@@ -116,14 +107,14 @@ impl Actor for SortingActor {
 
 impl actix::io::WriteHandler<io::Error> for SortingActor {}
 
-impl StreamHandler<codec::SortingRequest, io::Error> for SortingActor {
-    fn handle(&mut self, msg: codec::SortingRequest, _: &mut Context<Self>) {
+impl StreamHandler<messages::SortingRequest, io::Error> for SortingActor {
+    fn handle(&mut self, msg: messages::SortingRequest, _: &mut Context<Self>) {
         println!("[SortingActor][{}] Got sorting request: Vec[{}]", self.addr, msg.values.len());
 
-        let (vals, duration) = util::measure_time(&|vals| self.sort_vec(vals), msg.values);
+        let sorted_values = self.sort_vec(msg.values);
 
-        println!("[SortingActor][{}] Done sorting - duration {} (ms)", self.addr, duration);
+        println!("[SortingActor][{}] Done sorting", self.addr);
 
-        self.framed.write(codec::SortingResponse::new(vals, duration))
+        self.framed.write(messages::SortingResponse::new(sorted_values, -1))
     }
 }

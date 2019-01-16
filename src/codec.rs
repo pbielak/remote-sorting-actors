@@ -5,47 +5,17 @@ use serde_json as json;
 use std::io;
 use tokio_io::codec::{Decoder, Encoder};
 
-
-/// Supervisor -> SortingActor request
-#[derive(Serialize, Deserialize, Debug, Message)]
-pub struct SortingRequest {
-    pub values: Vec<i64>,
-}
-
-impl SortingRequest {
-    pub fn new(values: Vec<i64>) -> SortingRequest {
-        SortingRequest{
-            values
-        }
-    }
-}
-
-
-/// SortingActor -> Supervisor response
-#[derive(Serialize, Deserialize, Debug, Message)]
-pub struct SortingResponse {
-    pub values: Vec<i64>,
-    pub duration: i64
-}
-
-impl SortingResponse {
-    pub fn new(values: Vec<i64>, duration: i64) -> SortingResponse {
-        SortingResponse{
-            values,
-            duration
-        }
-    }
-}
+use super::messages;
 
 
 /// Codec for SortingActor -> Supervisor transport
 pub struct SortingActorToSupervisorCodec;
 
 impl Encoder for SortingActorToSupervisorCodec {
-    type Item = SortingResponse;
+    type Item = messages::SortingResponse;
     type Error = io::Error;
 
-    fn encode(&mut self, msg: SortingResponse, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, msg: messages::SortingResponse, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let msg = json::to_string(&msg).unwrap();
         let msg_ref: &[u8] = msg.as_ref();
 
@@ -58,7 +28,7 @@ impl Encoder for SortingActorToSupervisorCodec {
 }
 
 impl Decoder for SortingActorToSupervisorCodec {
-    type Item = SortingRequest;
+    type Item = messages::SortingRequest;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -72,7 +42,7 @@ impl Decoder for SortingActorToSupervisorCodec {
         if src.len() >= size + 8 {
             src.split_to(8);
             let buf = src.split_to(size);
-            Ok(Some(json::from_slice::<SortingRequest>(&buf)?))
+            Ok(Some(json::from_slice::<messages::SortingRequest>(&buf)?))
         } else {
             Ok(None)
         }
@@ -84,10 +54,10 @@ impl Decoder for SortingActorToSupervisorCodec {
 pub struct SupervisorToSortingActorCodec;
 
 impl Encoder for SupervisorToSortingActorCodec {
-    type Item = SortingRequest;
+    type Item = messages::SortingRequest;
     type Error = io::Error;
 
-    fn encode(&mut self, msg: SortingRequest, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, msg: messages::SortingRequest, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let msg = json::to_string(&msg).unwrap();
         let msg_ref: &[u8] = msg.as_ref();
 
@@ -100,7 +70,7 @@ impl Encoder for SupervisorToSortingActorCodec {
 }
 
 impl Decoder for SupervisorToSortingActorCodec {
-    type Item = SortingResponse;
+    type Item = messages::SortingResponse;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -115,7 +85,7 @@ impl Decoder for SupervisorToSortingActorCodec {
         if src.len() >= size + 8 {
             src.split_to(8);
             let buf = src.split_to(size);
-            Ok(Some(json::from_slice::<SortingResponse>(&buf)?))
+            Ok(Some(json::from_slice::<messages::SortingResponse>(&buf)?))
         } else {
             Ok(None)
         }
