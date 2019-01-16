@@ -48,10 +48,12 @@ pub struct SupervisorActor {
     start_time: PreciseTime,
     processed_chunks: usize,
     sorted_values: Vec<i64>,
+
+    output_path: PathBuf,
 }
 
 impl SupervisorActor {
-    pub fn new(addr: String, num_actors: usize, num_chunks: usize) -> SupervisorActor {
+    pub fn new(addr: String, num_actors: usize, num_chunks: usize, output_path: PathBuf) -> SupervisorActor {
         let sorting_actors = vec![];
         let sorted_values = vec![];
         let processed_chunks = 0;
@@ -65,6 +67,7 @@ impl SupervisorActor {
             start_time,
             processed_chunks,
             sorted_values,
+            output_path,
         }
     }
 
@@ -82,7 +85,8 @@ impl SupervisorActor {
         self.start_time = PreciseTime::now();
 
         let chunks = split_vec(&values, self.num_chunks);
-        let assignments = round_robin_assign((0..self.sorting_actors.len()).collect(), chunks);
+        let actor_idxs = (0..self.sorting_actors.len()).collect();
+        let assignments = round_robin_assign(actor_idxs, chunks);
 
         for (actor_idx, chunk) in assignments {
             self.sorting_actors[actor_idx].write(messages::SortingRequest::new(chunk.to_vec()))
@@ -161,6 +165,13 @@ impl StreamHandler<messages::SortingResponse, io::Error> for SupervisorActor {
         if self.processed_chunks == self.num_chunks {
             let duration = self.start_time.to(PreciseTime::now()).num_milliseconds();
             println!("Done with sorting: Vec[{}] Time: {} (ms)", self.sorted_values.len(), duration);
+
+            let out_path: &PathBuf = &self.output_path;
+            if out_path.to_str().unwrap() != "-" {
+                let write_ok = util::write_numbers(out_path, &self.sorted_values).unwrap();
+                println!("Write ok: {:?}", write_ok);
+            }
+
             System::current().stop();
         }
     }
@@ -249,7 +260,7 @@ fn main() {
                 })
             );
 
-            SupervisorActor::new(myaddr, n, k)
+            SupervisorActor::new(myaddr, n, k, output_path)
         });
 
         let numbers: Vec<i64> = util::read_numbers(input_path).unwrap();

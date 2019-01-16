@@ -25,7 +25,7 @@ pub fn read_numbers(path: PathBuf) -> Result<Vec<i64>, Error> {
 }
 
 
-pub fn write_numbers(path: PathBuf, numbers: &Vec<i64>) -> Result<bool, Error> {
+pub fn write_numbers(path: &PathBuf, numbers: &Vec<i64>) -> Result<bool, Error> {
     let mut file = File::create(path).unwrap();
 
     numbers.iter().for_each(|v| {
